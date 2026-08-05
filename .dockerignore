@@ -3,6 +3,7 @@ frontend/dist
 backend/__pycache__
 backend/*.pyc
 backend/.env
+backend/pre_reset_backup
 **/__pycache__
 **/*.pyc
 *.egg-info
