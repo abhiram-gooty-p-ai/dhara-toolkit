@@ -71,11 +71,15 @@ def init_schema(conn):
                 classifications    JSONB DEFAULT '{}',
                 concepts           TEXT[] DEFAULT '{}',
                 age_column_keys    JSONB DEFAULT '{}',
-                source_excel       TEXT
+                source_excel       TEXT,
+                original_excel     TEXT
             )
         """)
         cur.execute("""
             ALTER TABLE datasets ADD COLUMN IF NOT EXISTS source_excel TEXT
+        """)
+        cur.execute("""
+            ALTER TABLE datasets ADD COLUMN IF NOT EXISTS original_excel TEXT
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS dataset_rows (
@@ -194,13 +198,13 @@ def push_to_catalogue(
                     title, short_description, long_description,
                     category, geography, frequency, time_period,
                     data_source, units, classifications, concepts, age_column_keys,
-                    source_excel
+                    source_excel, original_excel
                 ) VALUES (
                     %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
-                    %s
+                    %s, %s
                 )
             """, (
                 ds_id,
@@ -220,6 +224,7 @@ def push_to_catalogue(
                 STANDARD_CONCEPTS,
                 json.dumps(age_column_keys),
                 table.get("source_excel_url"),
+                table.get("original_excel_url"),
             ))
 
             for row_index, row in enumerate(rows):

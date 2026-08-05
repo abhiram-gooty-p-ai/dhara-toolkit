@@ -18,6 +18,7 @@ import catalogue as _cat
 from metadata_excel import parse_catalogue_summary, parse_metadata_workbook
 from catalogue_matching import match_tables_to_metadata
 from table_export import table_to_excel_bytes
+from original_sheet_export import extract_sheet_with_formatting_from_bytes
 
 app = FastAPI(title="Table Extractor API")
 
@@ -138,6 +139,21 @@ async def batch_extract(files: list[UploadFile] = File(...)):
 
     contents = [(f.filename, await f.read()) for f in files]
 
+    def _attach_original_sheets(filename: str, content: bytes, tables: list):
+        # One extraction+upload per unique sheet (several tables can share a
+        # sheet, e.g. urban/rural split within one physical sheet) -- every
+        # table on that sheet points at the same file, which is correct: if
+        # the source doesn't separate them, neither should the download.
+        cache = {}
+        for t in tables:
+            sheet = t.get("sheet")
+            if not sheet:
+                continue
+            if sheet not in cache:
+                xlsx_bytes = extract_sheet_with_formatting_from_bytes(content, sheet)
+                cache[sheet] = _upload_original_sheet_to_gcs(xlsx_bytes, filename, sheet)
+            t["original_excel_url"] = cache[sheet]
+
     async def _extract_one(filename: str, content: bytes):
         try:
             tables = await asyncio.to_thread(_direct.extract_from_file, content, filename)
@@ -147,6 +163,12 @@ async def batch_extract(files: list[UploadFile] = File(...)):
             raise HTTPException(500, f"Extraction error in {filename}: {e}")
         for t in tables:
             t["source_file"] = filename
+        try:
+            await asyncio.to_thread(_attach_original_sheets, filename, content, tables)
+        except Exception as e:
+            # Non-fatal -- matching/review/push all still work without this,
+            # datasets just fall back to the flat export on download.
+            print(f"Original-sheet export failed for {filename}: {e}")
         return filename, tables
 
     results = await asyncio.gather(*(_extract_one(fn, ct) for fn, ct in contents))
@@ -290,33 +312,36 @@ async def batch_push(
     return {"results": results, "groups_pushed": len(results)}
 
 
-def _upload_excel_to_gcs(file_bytes: bytes, filename: str) -> str:
-    """Upload Excel bytes to GCS and return the public gs:// URL."""
+def _upload_bytes_to_gcs(file_bytes: bytes, blob_name: str) -> str:
     from google.cloud import storage as gcs
     bucket_name = os.getenv("GCS_BUCKET_NAME", "")
     if not bucket_name:
         raise ValueError("GCS_BUCKET_NAME environment variable is not set")
     client = gcs.Client()
     bucket = client.bucket(bucket_name)
-    blob_name = f"metadata_excel/{filename}"
     blob = bucket.blob(blob_name)
     blob.upload_from_string(file_bytes, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     return f"gs://{bucket_name}/{blob_name}"
+
+
+def _upload_excel_to_gcs(file_bytes: bytes, filename: str) -> str:
+    """Upload a metadata workbook and return the gs:// URL, stored on
+    metadata_groups.metadata_excel."""
+    return _upload_bytes_to_gcs(file_bytes, f"metadata_excel/{filename}")
 
 
 def _upload_table_excel_to_gcs(file_bytes: bytes, dataset_id: str) -> str:
     """Upload a per-dataset clean Excel export (see table_export.py) and
     return the gs:// URL, stored on datasets.source_excel."""
-    from google.cloud import storage as gcs
-    bucket_name = os.getenv("GCS_BUCKET_NAME", "")
-    if not bucket_name:
-        raise ValueError("GCS_BUCKET_NAME environment variable is not set")
-    client = gcs.Client()
-    bucket = client.bucket(bucket_name)
-    blob_name = f"datasets/{dataset_id}.xlsx"
-    blob = bucket.blob(blob_name)
-    blob.upload_from_string(file_bytes, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    return f"gs://{bucket_name}/{blob_name}"
+    return _upload_bytes_to_gcs(file_bytes, f"datasets/{dataset_id}.xlsx")
+
+
+def _upload_original_sheet_to_gcs(file_bytes: bytes, source_file: str, sheet: str) -> str:
+    """Upload a formatting-preserving single-sheet export (see
+    original_sheet_export.py) and return the gs:// URL, stored on
+    datasets.original_excel."""
+    safe_name = f"{source_file}__{sheet}".replace("/", "_")
+    return _upload_bytes_to_gcs(file_bytes, f"original_sheets/{safe_name}.xlsx")
 
 
 @app.post("/api/catalogue/push")
