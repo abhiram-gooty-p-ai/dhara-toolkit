@@ -697,6 +697,13 @@ body {
 
 .push-scope-count { font-size: 11.5px; color: var(--ink-soft); }
 
+.push-mode-hint {
+  font-size: 11.5px; line-height: 1.5; color: var(--ink-soft);
+  background: var(--bg-1); border: 1px solid var(--line); border-radius: 7px;
+  padding: 8px 10px; margin-top: 6px;
+}
+.push-mode-hint-new { background: #fff2df; border-color: #f3c98b; color: #9a5b0c; }
+
 .push-new-form { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
 .push-field { display: flex; flex-direction: column; gap: 3px; }
 .push-label { font-size: 11.5px; font-weight: 600; color: var(--ink); }
@@ -709,6 +716,8 @@ body {
 .push-textarea { resize: vertical; min-height: 54px; font-family: inherit; }
 .push-file-input { font-size: 12px; }
 .push-file-name { font-size: 11px; color: var(--primary); margin-top: 2px; }
+.push-file-status { font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+.push-file-error { font-size: 11px; color: #c0392b; margin-top: 2px; }
 
 .push-modal-footer {
   display: flex; justify-content: flex-end; gap: 8px;
@@ -745,3 +754,104 @@ body {
   gap: 12px; padding: 32px 20px; text-align: center;
 }
 .push-error-msg { font-size: 13px; color: #dc2626; }
+
+/* ── Mode selector (Batch Auto-Map vs Single File) ─────────────────────── */
+.mode-selector { display: flex; flex-direction: column; gap: 4px; padding: 0 14px; }
+.mode-btn {
+  width: 100%; text-align: left; padding: 8px 10px; font-size: 12px; font-weight: 600;
+  background: transparent; color: #7a95a8; border: 1px solid transparent; border-radius: 7px;
+  cursor: pointer;
+}
+.mode-btn:hover { background: #162c3e; color: #cfe0ea; }
+.mode-btn-active {
+  background: #0f3a52; color: #fff; border-color: #1c5578;
+}
+.mode-btn-active:hover { background: #0f3a52; }
+
+/* ── Batch upload + review flow ────────────────────────────────────────── */
+.left-nav-hint { font-size: 11px; line-height: 1.5; color: #7a95a8; padding: 0 4px; }
+.left-nav-restart {
+  width: 100%; padding: 8px 10px; font-size: 12px; font-weight: 600;
+  background: #162c3e; color: #cfe0ea; border: 1px solid #22384a; border-radius: 7px;
+  cursor: pointer;
+}
+.left-nav-restart:hover { background: #1c374b; }
+
+.app-scroll-area { flex: 1; overflow-y: auto; padding: 24px 28px 40px; }
+
+.batch-upload { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+.batch-upload-title { font-size: 20px; font-weight: 700; color: var(--ink); }
+.batch-upload-subtitle { font-size: 13.5px; color: var(--ink-soft); line-height: 1.6; max-width: 620px; }
+
+.batch-upload-cols { display: flex; gap: 20px; flex-wrap: wrap; }
+.batch-upload-col {
+  flex: 1; min-width: 280px; display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px;
+}
+.batch-upload-label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--ink); }
+.batch-upload-btn {
+  align-self: flex-start; padding: 8px 14px; font-size: 13px; font-weight: 600;
+  background: var(--bg-1); border: 1px solid var(--line); border-radius: 7px;
+  color: var(--primary); cursor: pointer;
+}
+.batch-upload-btn:hover:not(:disabled) { background: var(--bg-2); border-color: var(--primary); }
+.batch-upload-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+.batch-file-list { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.batch-file-list li {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 12.5px; color: var(--ink); background: var(--bg-1);
+  border-radius: 6px; padding: 6px 10px;
+}
+.batch-file-name { word-break: break-all; }
+.batch-file-remove {
+  flex-shrink: 0; background: none; border: none; color: var(--ink-soft);
+  cursor: pointer; font-size: 12px; padding: 2px 4px;
+}
+.batch-file-remove:hover { color: #b91c1c; }
+
+.batch-run-btn {
+  align-self: flex-start; padding: 10px 20px; font-size: 14px; font-weight: 700;
+  background: var(--primary); color: #fff; border: none; border-radius: 8px; cursor: pointer;
+}
+.batch-run-btn:hover:not(:disabled) { background: var(--primary-dark); }
+.batch-run-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.batch-review { max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+.batch-review-header h2 { font-size: 19px; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+.batch-review-header p { font-size: 13px; color: var(--ink-soft); }
+
+.batch-group {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 16px; display: flex; flex-direction: column; gap: 12px;
+}
+.batch-group-warn { border-color: #f3c98b; background: #fffaf1; }
+.batch-group-info { border-color: var(--line); background: var(--bg-1); }
+
+.batch-group-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.batch-group-file { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.batch-group-count { font-size: 11.5px; color: var(--ink-soft); background: var(--bg-1); padding: 3px 9px; border-radius: 999px; }
+
+.batch-hint { font-size: 12px; color: var(--ink-soft); line-height: 1.5; }
+
+.batch-table-list { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.batch-table-list th {
+  text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px;
+  color: var(--ink-soft); border-bottom: 1px solid var(--line); padding: 6px 8px;
+}
+.batch-table-list td { padding: 7px 8px; border-bottom: 1px solid var(--bg-2); color: var(--ink); vertical-align: top; }
+.batch-table-id { font-family: monospace; font-size: 11.5px; color: var(--primary); white-space: nowrap; }
+
+.batch-confidence {
+  display: inline-block; font-size: 10.5px; font-weight: 700; padding: 3px 8px;
+  border-radius: 999px; white-space: nowrap;
+  background: var(--bg-2); color: var(--ink-soft);
+}
+.batch-confidence[data-confidence="exact"],
+.batch-confidence[data-confidence="stem"] { background: #e6f7ee; color: #0a7a4a; }
+.batch-confidence[data-confidence="code"],
+.batch-confidence[data-confidence="code+keyword"] { background: #fff2df; color: #9a5b0c; }
+.batch-confidence[data-confidence="manual"],
+.batch-confidence[data-confidence="grouped"] { background: #e8effc; color: #1d4f9e; }
+
+.batch-review-footer { margin: 4px 0 0; padding: 0; border: none; }

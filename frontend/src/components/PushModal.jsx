@@ -2,8 +2,39 @@ import { useState, useEffect } from 'react'
 
 const FREQUENCY_OPTIONS = ['Annual', 'Monthly', 'Quarterly', 'Decennial', 'Ad-hoc']
 
+const FORM_FIELDS = [
+  'title', 'product', 'category', 'geography', 'frequency', 'time_period',
+  'data_source', 'description', 'last_updated', 'future_release',
+  'key_statistics', 'remarks',
+]
+
 function todayFormatted() {
   return new Date().toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })
+}
+
+function fieldsFromGroup(g) {
+  return {
+    title: g.title || '',
+    product: g.product || '',
+    category: g.category || '',
+    geography: g.geography || '',
+    frequency: g.frequency || '',
+    time_period: g.time_period || '',
+    data_source: g.data_source || '',
+    description: g.description || '',
+    last_updated: g.last_updated_date || '',
+    future_release: g.future_release || '',
+    key_statistics: g.key_statistics || '',
+    remarks: g.remarks || '',
+  }
+}
+
+function emptyFields() {
+  return {
+    title: '', product: '', category: '', geography: '', frequency: '',
+    time_period: '', data_source: '', description: '',
+    last_updated: todayFormatted(), future_release: '', key_statistics: '', remarks: '',
+  }
 }
 
 export default function PushModal({ tables, groups, onClose }) {
@@ -11,21 +42,11 @@ export default function PushModal({ tables, groups, onClose }) {
   const [scope, setScope] = useState('all')
   const [metaMode, setMetaMode] = useState('new')
   const [selectedMetaId, setSelectedMetaId] = useState('')
-  const [form, setForm] = useState({
-    title: '',
-    product: '',
-    category: '',
-    geography: '',
-    frequency: '',
-    time_period: '',
-    data_source: '',
-    description: '',
-    last_updated: todayFormatted(),
-    future_release: '',
-    key_statistics: '',
-    remarks: '',
-  })
+  const [form, setForm] = useState(emptyFields())
+  const [originalExistingFields, setOriginalExistingFields] = useState(null)
   const [excelFile, setExcelFile] = useState(null)
+  const [parsingExcel, setParsingExcel] = useState(false)
+  const [excelParseError, setExcelParseError] = useState('')
   const [step, setStep] = useState('config')
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
@@ -36,10 +57,39 @@ export default function PushModal({ tables, groups, onClose }) {
       .then((data) => {
         const grps = data.groups || []
         setExistingGroups(grps)
-        if (grps.length > 0) setSelectedMetaId(grps[0].metadata_id)
+        if (grps.length > 0) selectExistingGroup(grps[0].metadata_id, grps)
       })
       .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const selectExistingGroup = (metadataId, groupsList = existingGroups) => {
+    setSelectedMetaId(metadataId)
+    const g = groupsList.find((x) => x.metadata_id === metadataId)
+    if (g) {
+      const fields = fieldsFromGroup(g)
+      setForm(fields)
+      setOriginalExistingFields(fields)
+    }
+  }
+
+  const handleMetaModeChange = (mode) => {
+    setMetaMode(mode)
+    if (mode === 'new') {
+      setForm(emptyFields())
+      setOriginalExistingFields(null)
+    } else if (selectedMetaId) {
+      selectExistingGroup(selectedMetaId)
+    }
+  }
+
+  // Editing a prefilled existing-group field means "this should become its
+  // own group" rather than silently overwriting the group everyone else's
+  // datasets are already filed under.
+  const editedExisting = metaMode === 'existing' && originalExistingFields
+    && FORM_FIELDS.some((f) => (form[f] || '') !== (originalExistingFields[f] || ''))
+
+  const effectiveMode = metaMode === 'existing' && !editedExisting ? 'existing' : 'new'
 
   const tablesToPush = (() => {
     if (scope === 'all') return tables
@@ -52,14 +102,43 @@ export default function PushModal({ tables, groups, onClose }) {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
+  const handleExcelSelected = async (file) => {
+    setExcelFile(file)
+    setExcelParseError('')
+    if (!file) return
+
+    setParsingExcel(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/catalogue/parse-metadata-excel', { method: 'POST', body: fd })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: 'Could not read this file' }))
+        throw new Error(err.detail || 'Could not read this file')
+      }
+      const { fields } = await res.json()
+      setForm((prev) => {
+        const next = { ...prev }
+        for (const [key, value] of Object.entries(fields)) {
+          if (value) next[key] = value
+        }
+        return next
+      })
+    } catch (e) {
+      setExcelParseError(e.message)
+    } finally {
+      setParsingExcel(false)
+    }
+  }
+
   const handlePush = async () => {
     setStep('pushing')
     setError('')
     try {
       const fd = new FormData()
       fd.append('tables_json', JSON.stringify(tablesToPush))
-      fd.append('metadata_mode', metaMode)
-      if (metaMode === 'existing') {
+      fd.append('metadata_mode', effectiveMode)
+      if (effectiveMode === 'existing') {
         fd.append('metadata_id', selectedMetaId)
       }
       fd.append('meta_title', form.title || '')
@@ -93,7 +172,7 @@ export default function PushModal({ tables, groups, onClose }) {
   }
 
   const pushDisabled =
-    step === 'pushing' || (metaMode === 'new' && !form.title.trim())
+    step === 'pushing' || (effectiveMode === 'new' && !form.title.trim())
 
   return (
     <div className="push-overlay">
@@ -162,7 +241,7 @@ export default function PushModal({ tables, groups, onClose }) {
                       name="metaMode"
                       value="new"
                       checked={metaMode === 'new'}
-                      onChange={() => setMetaMode('new')}
+                      onChange={() => handleMetaModeChange('new')}
                     />
                     Create new group
                   </label>
@@ -173,20 +252,20 @@ export default function PushModal({ tables, groups, onClose }) {
                         name="metaMode"
                         value="existing"
                         checked={metaMode === 'existing'}
-                        onChange={() => setMetaMode('existing')}
+                        onChange={() => handleMetaModeChange('existing')}
                       />
                       Add to existing group
                     </label>
                   )}
                 </div>
 
-                {metaMode === 'existing' ? (
+                {metaMode === 'existing' && (
                   <div className="push-field">
                     <label className="push-label">Select group</label>
                     <select
                       className="push-input"
                       value={selectedMetaId}
-                      onChange={(e) => setSelectedMetaId(e.target.value)}
+                      onChange={(e) => selectExistingGroup(e.target.value)}
                     >
                       {existingGroups.map((g) => (
                         <option key={g.metadata_id} value={g.metadata_id}>
@@ -195,7 +274,17 @@ export default function PushModal({ tables, groups, onClose }) {
                       ))}
                     </select>
                   </div>
-                ) : (
+                )}
+
+                {metaMode === 'existing' && (
+                  <div className={editedExisting ? 'push-mode-hint push-mode-hint-new' : 'push-mode-hint'}>
+                    {editedExisting
+                      ? 'You\'ve edited fields below — pushing will create a new group with these values instead of changing the existing one.'
+                      : 'These tables will be added to the selected group as-is. Edit any field below to create a new group instead (e.g. for a new year\'s data).'}
+                  </div>
+                )}
+
+                {(
                   <div className="push-new-form">
                     <div className="push-field">
                       <label className="push-label">Title *</label>
@@ -317,18 +406,28 @@ export default function PushModal({ tables, groups, onClose }) {
                         placeholder="Any additional notes or caveats"
                       />
                     </div>
-                    <div className="push-field">
-                      <label className="push-label">Source Excel (optional)</label>
-                      <input
-                        className="push-input push-file-input"
-                        type="file"
-                        accept=".xlsx,.xls"
-                        onChange={(e) => setExcelFile(e.target.files[0] || null)}
-                      />
-                      {excelFile && (
-                        <div className="push-file-name">{excelFile.name}</div>
-                      )}
-                    </div>
+                    {effectiveMode === 'new' && (
+                      <div className="push-field">
+                        <label className="push-label">Source Excel (optional)</label>
+                        <input
+                          className="push-input push-file-input"
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={(e) => handleExcelSelected(e.target.files[0] || null)}
+                        />
+                        {excelFile && !parsingExcel && !excelParseError && (
+                          <div className="push-file-name">{excelFile.name} — fields filled in below</div>
+                        )}
+                        {parsingExcel && (
+                          <div className="push-file-status">Reading metadata from {excelFile?.name}…</div>
+                        )}
+                        {excelParseError && (
+                          <div className="push-file-error">
+                            Couldn't auto-fill from {excelFile?.name}: {excelParseError}. You can still fill the fields in manually.
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

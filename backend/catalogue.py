@@ -70,8 +70,12 @@ def init_schema(conn):
                 units              TEXT,
                 classifications    JSONB DEFAULT '{}',
                 concepts           TEXT[] DEFAULT '{}',
-                age_column_keys    JSONB DEFAULT '{}'
+                age_column_keys    JSONB DEFAULT '{}',
+                source_excel       TEXT
             )
+        """)
+        cur.execute("""
+            ALTER TABLE datasets ADD COLUMN IF NOT EXISTS source_excel TEXT
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS dataset_rows (
@@ -94,17 +98,24 @@ def init_schema(conn):
 
 
 def list_metadata_groups(conn):
+    # Returns the full field set (not just display fields) so the frontend
+    # can prefill an edit form when a user adds tables to an existing group.
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         cur.execute("""
             SELECT
                 metadata_id,
                 title,
                 description,
+                product,
                 category,
                 geography,
                 frequency,
                 time_period,
                 data_source,
+                last_updated_date,
+                future_release,
+                key_statistics,
+                remarks,
                 array_length(table_ids, 1) AS table_count
             FROM metadata_groups
             ORDER BY title
@@ -182,12 +193,14 @@ def push_to_catalogue(
                     dataset_id, unique_dataset_id, table_id, metadata_id,
                     title, short_description, long_description,
                     category, geography, frequency, time_period,
-                    data_source, units, classifications, concepts, age_column_keys
+                    data_source, units, classifications, concepts, age_column_keys,
+                    source_excel
                 ) VALUES (
                     %s, %s, %s, %s,
                     %s, %s, %s,
                     %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s,
+                    %s
                 )
             """, (
                 ds_id,
@@ -206,6 +219,7 @@ def push_to_catalogue(
                 json.dumps(classifications),
                 STANDARD_CONCEPTS,
                 json.dumps(age_column_keys),
+                table.get("source_excel_url"),
             ))
 
             for row_index, row in enumerate(rows):

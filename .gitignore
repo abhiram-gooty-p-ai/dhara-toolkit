@@ -47,3 +47,4 @@ Thumbs.db
 # Large sample data files (optional — remove lines below to include them)
 *.xlsx
 *.xls
+backend/pre_reset_backup/

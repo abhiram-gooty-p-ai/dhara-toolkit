@@ -1,3 +1,4 @@
+import concurrent.futures
 import io
 import json
 import re
@@ -177,10 +178,23 @@ class TableExtractor:
         except Exception as e:
             raise ValueError(f"Cannot open Excel file: {e}")
 
+        # Process sheets concurrently -- each sheet is 1+ independent LLM calls,
+        # and a large workbook (e.g. 36 sheets) run sequentially is the main
+        # source of slowness. Capped at 5 workers to stay well under Anthropic
+        # rate limits; _call_with_retry still backs off if we hit them anyway.
+        sheets = [(name, wb[name]) for name in wb.sheetnames]
+        results_by_sheet: List[List[Dict]] = [[] for _ in sheets]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            future_to_idx = {
+                pool.submit(self._process_sheet, ws, name, filename): i
+                for i, (name, ws) in enumerate(sheets)
+            }
+            for future in concurrent.futures.as_completed(future_to_idx):
+                results_by_sheet[future_to_idx[future]] = future.result()
+
         all_tables: List[Dict] = []
-        for sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
-            all_tables.extend(self._process_sheet(ws, sheet_name, filename))
+        for tables in results_by_sheet:
+            all_tables.extend(tables)
 
         # Generate DDI-format table ID from raw header rows.
         # Format: DDI_DEL_DES_VS_{TABLECODE}_{TOPLEVEL}[_{NEXTLEVEL}]_2024_V1
