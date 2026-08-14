@@ -167,8 +167,12 @@ def _extract_json_with_key(text: str, required_key: str) -> Optional[Dict]:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class TableExtractor:
-    def __init__(self, api_key: Optional[str] = None):
-        self.client = anthropic.Anthropic(api_key=api_key)
+    def __init__(self, api_key: Optional[str] = None, skip_llm: bool = False):
+        self.skip_llm = skip_llm
+        # Don't touch the Anthropic SDK at all in skip_llm mode -- constructing
+        # it raises if no API key is configured anywhere, which would otherwise
+        # make SKIP_LLM=1 unusable without also having a (unused) key set.
+        self.client = None if skip_llm else anthropic.Anthropic(api_key=api_key)
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -242,7 +246,9 @@ class TableExtractor:
                     results.append(tbl)
             except Exception as e:
                 print(f"[{sheet_name}] block {start}-{end} error: {e}")
-            if idx < len(blocks) - 1:
+            # This pause only exists to stay under Anthropic rate limits between
+            # per-block LLM calls -- skip it entirely when there are none.
+            if not self.skip_llm and idx < len(blocks) - 1:
                 time.sleep(3)
         return results
 
@@ -352,11 +358,14 @@ class TableExtractor:
 
         n_cols = max(len(r) for r in body)
 
-        try:
-            structure = self._direct_llm_structure(body, title, description, n_cols)
-        except Exception as e:
-            print(f"Structure analysis failed ({e}), using heuristic")
+        if self.skip_llm:
             structure = self._heuristic_structure(body, n_cols)
+        else:
+            try:
+                structure = self._direct_llm_structure(body, title, description, n_cols)
+            except Exception as e:
+                print(f"Structure analysis failed ({e}), using heuristic")
+                structure = self._heuristic_structure(body, n_cols)
 
         header_rows: int = structure.get("header_rows", 1)
         skip_set: set = set(structure.get("skip_rows", []))
@@ -532,6 +541,9 @@ Return ONLY valid JSON, no markdown fences."""
         Gender (Male/Female), Geography (State, District), Age Group, etc.
         Returns a list of category dicts: {name, description, values:[{value,code,description}]}
         """
+        if self.skip_llm:
+            return []
+
         # Format original header matrix so the LLM sees the raw multi-level structure
         header_lines = []
         for i, row in enumerate(raw_header_rows):
@@ -620,6 +632,10 @@ Return ONLY a valid JSON object — no prose, no markdown fences:
         if len(tables_meta) == 1:
             return [{"name": tables_meta[0].get("title", "Table 1"), "table_ids": [tables_meta[0]["id"]]}]
 
+        if self.skip_llm:
+            return [{"name": t.get("title", f"Table {i+1}"), "table_ids": [t["id"]]}
+                    for i, t in enumerate(tables_meta)]
+
         # Use simple numeric indices in the prompt — avoids Claude mangling complex ID strings.
         # We map indices back to real IDs after parsing.
         index_to_id = {str(i + 1): t["id"] for i, t in enumerate(tables_meta)}
@@ -680,6 +696,15 @@ Rules:
 
     def enrich_for_catalogue(self, table: dict) -> dict:
         """Use Claude to generate DES-catalogue-compatible metadata for one table."""
+        if self.skip_llm:
+            return {
+                "short_description": table.get("description", "") or table.get("title", ""),
+                "long_description": table.get("description", "") or table.get("title", ""),
+                "units": "Count",
+                "classifications": {},
+                "age_column_keys": {},
+            }
+
         columns = table.get("columns", [])
         sample_rows = table.get("rows", [])[:6]
 

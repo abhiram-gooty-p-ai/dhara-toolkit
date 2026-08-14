@@ -30,7 +30,8 @@ app.add_middleware(
 )
 
 _key = os.getenv("ANTHROPIC_API_KEY")
-_direct = TableExtractor(api_key=_key)
+_skip_llm = os.getenv("SKIP_LLM", "").strip().lower() in ("1", "true", "yes")
+_direct = TableExtractor(api_key=_key, skip_llm=_skip_llm)
 
 
 def _read_file(file: UploadFile) -> bytes:
