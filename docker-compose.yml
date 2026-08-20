@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:18
+    container_name: dhara-toolkit-db-local
+    environment:
+      POSTGRES_DB: dhara_toolkit
+      POSTGRES_USER: dhara_app
+      POSTGRES_PASSWORD: local_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - dhara_pgdata:/var/lib/postgresql
+      # Only runs on first container startup (empty data dir). One-time
+      # snapshot load -- this container never talks to Neon again after
+      # that, so writes made here do NOT sync back to production.
+      - ./docker/db/seed.sql:/docker-entrypoint-initdb.d/01-seed.sql:ro
+
+volumes:
+  dhara_pgdata:

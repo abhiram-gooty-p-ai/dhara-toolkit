@@ -48,3 +48,7 @@ Thumbs.db
 *.xlsx
 *.xls
 backend/pre_reset_backup/
+
+# Local dev DB seed — real catalogue data snapshot, regenerate via
+# `docker/db/refresh_seed.sh` rather than committing it
+docker/db/seed.sql
