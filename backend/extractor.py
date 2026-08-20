@@ -444,6 +444,12 @@ class TableExtractor:
             "raw_header_rows": raw_header_rows,
             "raw_col_num_rows": raw_col_num_rows,
             "raw_notes": raw_notes,
+            # 1-indexed, inclusive -- the physical sheet rows this table's
+            # block occupies. Lets a formatting-preserving export grab just
+            # this table instead of the whole sheet (several tables often
+            # share one sheet, e.g. urban/rural pairs).
+            "sheet_row_start": start + 1,
+            "sheet_row_end": end + 1,
         }
 
     # ── Title / description extraction ────────────────────────────────────────

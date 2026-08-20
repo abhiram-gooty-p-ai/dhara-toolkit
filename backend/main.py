@@ -141,19 +141,18 @@ async def batch_extract(files: list[UploadFile] = File(...)):
     contents = [(f.filename, await f.read()) for f in files]
 
     def _attach_original_sheets(filename: str, content: bytes, tables: list):
-        # One extraction+upload per unique sheet (several tables can share a
-        # sheet, e.g. urban/rural split within one physical sheet) -- every
-        # table on that sheet points at the same file, which is correct: if
-        # the source doesn't separate them, neither should the download.
-        cache = {}
+        # One export per table, scoped to that table's own row range --
+        # several tables can share a physical sheet (e.g. an urban/rural
+        # pair back to back), and each one's download must contain only
+        # its own table, not its sheet-mates'.
         for t in tables:
             sheet = t.get("sheet")
             if not sheet:
                 continue
-            if sheet not in cache:
-                xlsx_bytes = extract_sheet_with_formatting_from_bytes(content, sheet)
-                cache[sheet] = _upload_original_sheet_to_gcs(xlsx_bytes, filename, sheet)
-            t["original_excel_url"] = cache[sheet]
+            xlsx_bytes = extract_sheet_with_formatting_from_bytes(
+                content, sheet, t.get("sheet_row_start"), t.get("sheet_row_end")
+            )
+            t["original_excel_url"] = _upload_original_sheet_to_gcs(xlsx_bytes, filename, t["id"])
 
     async def _extract_one(filename: str, content: bytes):
         try:
@@ -249,7 +248,19 @@ async def batch_push(
         return t, _direct.enrich_for_catalogue(t)
 
     def _prepare_group(group):
-        tables = [mt["table"] for mt in group.get("matched_tables", [])]
+        matched = group.get("matched_tables", [])
+        for mt in matched:
+            # The metadata file's own per-dataset description is the
+            # correct title -- the extracted table's own description is
+            # often identical across sibling tables (e.g. every
+            # education-level breakdown repeats the same sheet header),
+            # which is why datasets ended up sharing titles.
+            item = mt.get("inventory_item")
+            if item:
+                catalog_title = item.get("short_description") or item.get("long_description")
+                if catalog_title:
+                    mt["table"]["description"] = catalog_title
+        tables = [mt["table"] for mt in matched]
         if not tables:
             return None
 
@@ -337,11 +348,12 @@ def _upload_table_excel_to_gcs(file_bytes: bytes, dataset_id: str) -> str:
     return _upload_bytes_to_gcs(file_bytes, f"datasets/{dataset_id}.xlsx")
 
 
-def _upload_original_sheet_to_gcs(file_bytes: bytes, source_file: str, sheet: str) -> str:
-    """Upload a formatting-preserving single-sheet export (see
+def _upload_original_sheet_to_gcs(file_bytes: bytes, source_file: str, dataset_id: str) -> str:
+    """Upload a formatting-preserving single-table export (see
     original_sheet_export.py) and return the gs:// URL, stored on
-    datasets.original_excel."""
-    safe_name = f"{source_file}__{sheet}".replace("/", "_")
+    datasets.original_excel. Named by dataset_id (not sheet) so tables
+    sharing a physical sheet don't collide on the same blob."""
+    safe_name = f"{source_file}__{dataset_id}".replace("/", "_")
     return _upload_bytes_to_gcs(file_bytes, f"original_sheets/{safe_name}.xlsx")
 
 
