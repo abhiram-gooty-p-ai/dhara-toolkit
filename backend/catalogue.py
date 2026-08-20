@@ -211,7 +211,7 @@ def push_to_catalogue(
                 unique_ds_id,
                 table_code,
                 metadata_id if metadata_mode == "existing" else None,
-                table.get("description") or table.get("title", ""),
+                (table.get("description") or table.get("title", "")).upper(),
                 enriched.get("short_description") or table.get("description", ""),
                 enriched.get("long_description") or table.get("description", ""),
                 meta_category,
@@ -267,7 +267,7 @@ def push_to_catalogue(
                     {
                         "dataset_id": dataset_ids[j],
                         "table_id": table_id_codes[j],
-                        "title": tables[j].get("description") or tables[j].get("title", ""),
+                        "title": (tables[j].get("description") or tables[j].get("title", "")).upper(),
                         "short_description": (enriched_data[j].get("short_description") if j < len(enriched_data) else "") or "",
                         "long_description": (enriched_data[j].get("long_description") if j < len(enriched_data) else "") or "",
                     }
